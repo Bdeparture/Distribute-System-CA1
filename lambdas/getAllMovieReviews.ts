@@ -15,6 +15,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // 
         console.log("Event: ", event);
         const parameters = event?.pathParameters;
         const movieId = parameters?.movieId ? parseInt(parameters.movieId) : undefined;
+        const minRating = event?.queryStringParameters?.minRating ? parseInt(event.queryStringParameters.minRating) : undefined; // 解析 minRating 参数
 
         if (!movieId) {
             return {
@@ -37,6 +38,19 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // 
         const commandOutput = await ddbClient.send(
             new QueryCommand(commandInput)
         );
+
+        // rate
+        if (!commandOutput || !commandOutput.Items || commandOutput.Items.length === 0) {
+            return {
+                statusCode: 404,
+                headers: {
+                    "content-type": "application/json",
+                },
+                body: JSON.stringify({ Message: "No movie reviews found for this movie" }),
+            };
+        }
+        
+        const filteredItems = commandOutput.Items.filter(item => !minRating || item.rating >= minRating);
 
         // Check if any items were found
         if (!commandOutput.Items || commandOutput.Items.length === 0) {
