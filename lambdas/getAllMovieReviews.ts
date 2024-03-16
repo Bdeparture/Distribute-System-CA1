@@ -5,7 +5,7 @@ import Ajv from "ajv";
 import schema from "../shared/types.schema.json";
 
 const ajv = new Ajv();
-const ddbClient = new DynamoDBClient({ region: process.env.REGION });
+const ddbClient = createDDbDocClient();
 
 export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // CHANGED
     try {
@@ -15,7 +15,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // 
         console.log("Event: ", event);
         const parameters = event?.pathParameters;
         const movieId = parameters?.movieId ? parseInt(parameters.movieId) : undefined;
-        const minRating = event?.queryStringParameters?.minRating ? parseInt(event.queryStringParameters.minRating) : undefined; // 解析 minRating 参数
+        const minRating = event?.queryStringParameters?.minRating ? parseInt(event.queryStringParameters.minRating) : undefined; // minRating 
 
         if (!movieId) {
             return {

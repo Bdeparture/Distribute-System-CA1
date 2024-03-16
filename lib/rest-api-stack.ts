@@ -105,6 +105,40 @@ export class RestAPIStack extends cdk.Stack {
       },
     });
 
+    //Get reviews by reviewer name
+    const getReviewsByNameFn = new lambdanode.NodejsFunction(
+      this,
+      "GetReviewsByNameFn",
+      {
+        architecture: lambda.Architecture.ARM_64,
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: `${__dirname}/../lambdas/getReviewsByName.ts`,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        environment: {
+          TABLE_NAME: movieReviewsTable.tableName,
+          REGION: 'eu-west-1',
+        },
+      }
+    );
+
+    //update movie review
+    const updateMovieReviewFn = new lambdanode.NodejsFunction(
+      this,
+      "updateMovieReviewFn",
+      {
+        architecture: lambda.Architecture.ARM_64,
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: `${__dirname}/../lambdas/updateMovieReview.ts`,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        environment: {
+          TABLE_NAME: movieReviewsTable.tableName,
+          REGION: 'eu-west-1',
+        },
+      }
+    );
+
     const newMovieFn = new lambdanode.NodejsFunction(this, "AddMovieFn", {
       architecture: lambda.Architecture.ARM_64,
       runtime: lambda.Runtime.NODEJS_16_X,
@@ -141,6 +175,8 @@ export class RestAPIStack extends cdk.Stack {
     moviesTable.grantReadWriteData(newMovieFn)
     movieReviewsTable.grantReadWriteData(addMovieReviewsFn)
     movieReviewsTable.grantReadWriteData(getAllMovieReviewsFn)
+    movieReviewsTable.grantReadWriteData(getReviewsByNameFn)
+    movieReviewsTable.grantReadWriteData(updateMovieReviewFn)
 
     // REST API 
     const api = new apig.RestApi(this, "RestAPI", {
@@ -183,6 +219,17 @@ export class RestAPIStack extends cdk.Stack {
     reviewsEndpoint.addMethod(
       "GET",
       new apig.LambdaIntegration(getAllMovieReviewsFn, { proxy: true })
+    );
+    
+    const reviewerNameEndpoint = reviewsEndpoint.addResource("{reviewerName}");
+    reviewerNameEndpoint.addMethod(
+      "GET",
+      new apig.LambdaIntegration(getReviewsByNameFn, { proxy: true })
+    );
+
+    reviewerNameEndpoint.addMethod(
+      "PUT",
+      new apig.LambdaIntegration(updateMovieReviewFn, { proxy: true })
     );
   }
 }
