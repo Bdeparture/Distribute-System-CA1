@@ -28,6 +28,12 @@ export class RestAPIStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       tableName: "MovieReviews",
     });
+    // second index
+    movieReviewsTable.addGlobalSecondaryIndex({
+      indexName: 'ReviewerNameIndex',
+      partitionKey: { name: 'reviewerName', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL, 
+    });
 
     const movieCastsTable = new dynamodb.Table(this, "MovieCastTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
@@ -75,8 +81,8 @@ export class RestAPIStack extends cdk.Stack {
       }
     );
 
-     //Add movie reviews
-     const addMovieReviewsFn = new lambdanode.NodejsFunction(
+    //Add movie reviews
+    const addMovieReviewsFn = new lambdanode.NodejsFunction(
       this,
       "AddMovieReviewsFn",
       {
@@ -96,7 +102,7 @@ export class RestAPIStack extends cdk.Stack {
     const getAllMovieReviewsFn = new lambdanode.NodejsFunction(this, "GetMovieReviewsFn", {
       architecture: lambda.Architecture.ARM_64,
       runtime: lambda.Runtime.NODEJS_18_X,
-      entry: `${__dirname}/../lambdas/getAllMovieReviews.ts`, 
+      entry: `${__dirname}/../lambdas/getAllMovieReviews.ts`,
       timeout: cdk.Duration.seconds(10),
       memorySize: 128,
       environment: {
@@ -139,6 +145,23 @@ export class RestAPIStack extends cdk.Stack {
       }
     );
 
+    //get all reviews by reviwer name 
+    const getAllReviewsByNameFn = new lambdanode.NodejsFunction(
+      this,
+      "getAllReviewsByNameFn",
+      {
+        architecture: lambda.Architecture.ARM_64,
+        runtime: lambda.Runtime.NODEJS_18_X,
+        entry: `${__dirname}/../lambdas/getAllReviewsByName.ts`,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        environment: {
+          TABLE_NAME: movieReviewsTable.tableName,
+          REGION: 'eu-west-1',
+        },
+      }
+    );
+
     const newMovieFn = new lambdanode.NodejsFunction(this, "AddMovieFn", {
       architecture: lambda.Architecture.ARM_64,
       runtime: lambda.Runtime.NODEJS_16_X,
@@ -159,7 +182,7 @@ export class RestAPIStack extends cdk.Stack {
           RequestItems: {
             [moviesTable.tableName]: generateBatch(movies),
             [movieCastsTable.tableName]: generateBatch(movieCasts),
-            [movieReviewsTable.tableName]: generateBatch(movieReviews),  
+            [movieReviewsTable.tableName]: generateBatch(movieReviews),
           },
         },
         physicalResourceId: custom.PhysicalResourceId.of("moviesddbInitData"), //.of(Date.now().toString()),
@@ -177,6 +200,7 @@ export class RestAPIStack extends cdk.Stack {
     movieReviewsTable.grantReadWriteData(getAllMovieReviewsFn)
     movieReviewsTable.grantReadWriteData(getReviewsByNameFn)
     movieReviewsTable.grantReadWriteData(updateMovieReviewFn)
+    movieReviewsTable.grantReadWriteData(getAllReviewsByNameFn)
 
     // REST API 
     const api = new apig.RestApi(this, "RestAPI", {
@@ -220,7 +244,7 @@ export class RestAPIStack extends cdk.Stack {
       "GET",
       new apig.LambdaIntegration(getAllMovieReviewsFn, { proxy: true })
     );
-    
+
     const reviewerNameEndpoint = reviewsEndpoint.addResource("{reviewerName}");
     reviewerNameEndpoint.addMethod(
       "GET",
@@ -230,6 +254,13 @@ export class RestAPIStack extends cdk.Stack {
     reviewerNameEndpoint.addMethod(
       "PUT",
       new apig.LambdaIntegration(updateMovieReviewFn, { proxy: true })
+    );
+
+    const reviewEndpoint = api.root.addResource("reviews");
+    const reviewerNamesEndpoint = reviewEndpoint.addResource("{reviewerName}");
+    reviewerNamesEndpoint.addMethod(
+      "GET",
+      new apig.LambdaIntegration(getAllReviewsByNameFn, { proxy: true })
     );
   }
 }
