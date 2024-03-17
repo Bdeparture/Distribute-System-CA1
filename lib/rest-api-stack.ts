@@ -7,6 +7,7 @@ import * as custom from "aws-cdk-lib/custom-resources";
 import { Construct } from "constructs";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { generateBatch } from "../shared/util";
+import { LambdaIntegration, MethodOptions } from 'aws-cdk-lib/aws-apigateway';
 import { movies, movieCasts, movieReviews } from "../seed/movies";
 
 export class RestAPIStack extends cdk.Stack {
@@ -55,19 +56,28 @@ export class RestAPIStack extends cdk.Stack {
      );
 
     // Functions 
+    const appCommonFnProps = (tableName: string) => {
+      return {
+        architecture: lambda.Architecture.ARM_64,
+        timeout: cdk.Duration.seconds(10),
+        memorySize: 128,
+        runtime: lambda.Runtime.NODEJS_18_X,
+        handler: 'handler',
+        environment: {
+          USER_POOL_ID: userPoolId,
+          CLIENT_ID: userPoolClientId,
+          REGION: cdk.Aws.REGION,
+          TABLE_NAME: tableName,
+        },
+      };
+    };
+
     const getMovieByIdFn = new lambdanode.NodejsFunction(
       this,
       "GetMovieByIdFn",
       {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_18_X,
+         ...appCommonFnProps(moviesTable.tableName),
         entry: `${__dirname}/../lambdas/getMovieById.ts`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: moviesTable.tableName,
-          REGION: 'eu-west-1',
-        },
       }
     );
 
@@ -75,15 +85,8 @@ export class RestAPIStack extends cdk.Stack {
       this,
       "GetAllMoviesFn",
       {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_18_X,
+        ...appCommonFnProps(moviesTable.tableName),
         entry: `${__dirname}/../lambdas/getAllMovies.ts`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: moviesTable.tableName,
-          REGION: 'eu-west-1',
-        },
       }
     );
 
@@ -92,29 +95,15 @@ export class RestAPIStack extends cdk.Stack {
       this,
       "AddMovieReviewsFn",
       {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_16_X,
+        ...appCommonFnProps(movieReviewsTable.tableName),
         entry: `${__dirname}/../lambdas/addMovieReviews.ts`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: movieReviewsTable.tableName,
-          REGION: "eu-west-1",
-        },
       }
     )
 
     //Get all the reviews 
     const getAllMovieReviewsFn = new lambdanode.NodejsFunction(this, "GetMovieReviewsFn", {
-      architecture: lambda.Architecture.ARM_64,
-      runtime: lambda.Runtime.NODEJS_18_X,
+      ...appCommonFnProps(movieReviewsTable.tableName),
       entry: `${__dirname}/../lambdas/getAllMovieReviews.ts`,
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 128,
-      environment: {
-        TABLE_NAME: movieReviewsTable.tableName,
-        REGION: 'eu-west-1',
-      },
     });
 
     //Get reviews by reviewer name
@@ -122,15 +111,8 @@ export class RestAPIStack extends cdk.Stack {
       this,
       "GetReviewsByNameFn",
       {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_18_X,
+        ...appCommonFnProps(movieReviewsTable.tableName),
         entry: `${__dirname}/../lambdas/getReviewsByName.ts`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: movieReviewsTable.tableName,
-          REGION: 'eu-west-1',
-        },
       }
     );
 
@@ -139,15 +121,8 @@ export class RestAPIStack extends cdk.Stack {
       this,
       "updateMovieReviewFn",
       {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_18_X,
+        ...appCommonFnProps(movieReviewsTable.tableName),
         entry: `${__dirname}/../lambdas/updateMovieReview.ts`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: movieReviewsTable.tableName,
-          REGION: 'eu-west-1',
-        },
       }
     );
 
@@ -156,28 +131,14 @@ export class RestAPIStack extends cdk.Stack {
       this,
       "getAllReviewsByNameFn",
       {
-        architecture: lambda.Architecture.ARM_64,
-        runtime: lambda.Runtime.NODEJS_18_X,
+        ...appCommonFnProps(movieReviewsTable.tableName),
         entry: `${__dirname}/../lambdas/getAllReviewsByName.ts`,
-        timeout: cdk.Duration.seconds(10),
-        memorySize: 128,
-        environment: {
-          TABLE_NAME: movieReviewsTable.tableName,
-          REGION: 'eu-west-1',
-        },
       }
     );
 
     const newMovieFn = new lambdanode.NodejsFunction(this, "AddMovieFn", {
-      architecture: lambda.Architecture.ARM_64,
-      runtime: lambda.Runtime.NODEJS_16_X,
+      ...appCommonFnProps(moviesTable.tableName),
       entry: `${__dirname}/../lambdas/addMovie.ts`,
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 128,
-      environment: {
-        TABLE_NAME: moviesTable.tableName,
-        REGION: "eu-west-1",
-      },
     });
 
     new custom.AwsCustomResource(this, "moviesddbInitData", {
@@ -198,6 +159,26 @@ export class RestAPIStack extends cdk.Stack {
       }),
     });
 
+    // Authorizor
+    const authorizerFn = new lambdanode.NodejsFunction(this, 'AuthorizerFn', {
+      ...appCommonFnProps(''),
+      entry: `${__dirname}/../lambdas/auth/authorizer.ts`,
+    });
+
+    const requestAuthorizer = new apig.RequestAuthorizer(
+      this,
+      'RequestAuthorizer',
+      {
+        identitySources: [apig.IdentitySource.header('cookie')],
+        handler: authorizerFn,
+        resultsCacheTtl: cdk.Duration.minutes(0),
+      },
+    );
+
+    const methodOptions: MethodOptions = { 
+        authorizer: requestAuthorizer,
+        authorizationType: apig.AuthorizationType.CUSTOM,
+    };
     // Permissions 
     moviesTable.grantReadData(getMovieByIdFn)
     moviesTable.grantReadData(getAllMoviesFn)
@@ -211,6 +192,7 @@ export class RestAPIStack extends cdk.Stack {
     // REST API 
     const api = new apig.RestApi(this, "RestAPI", {
       description: "demo api",
+      endpointTypes: [apig.EndpointType.REGIONAL],
       deployOptions: {
         stageName: "dev",
       },
@@ -236,13 +218,13 @@ export class RestAPIStack extends cdk.Stack {
 
     moviesEndpoint.addMethod(
       "POST",
-      new apig.LambdaIntegration(newMovieFn, { proxy: true })
+      new apig.LambdaIntegration(newMovieFn,{proxy: true}), methodOptions
     );
 
     const movieReviewsEndpoint = moviesEndpoint.addResource("reviews");
     movieReviewsEndpoint.addMethod(
       "POST",
-      new apig.LambdaIntegration(addMovieReviewsFn, { proxy: true })
+      new apig.LambdaIntegration(addMovieReviewsFn, { proxy: true }), methodOptions
     );
 
     const reviewsEndpoint = movieEndpoint.addResource("reviews");
@@ -259,7 +241,7 @@ export class RestAPIStack extends cdk.Stack {
 
     reviewerNameEndpoint.addMethod(
       "PUT",
-      new apig.LambdaIntegration(updateMovieReviewFn, { proxy: true })
+      new apig.LambdaIntegration(updateMovieReviewFn, { proxy: true }), methodOptions
     );
 
     const reviewEndpoint = api.root.addResource("reviews");
