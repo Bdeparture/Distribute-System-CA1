@@ -7,8 +7,9 @@ import * as custom from "aws-cdk-lib/custom-resources";
 import { Construct } from "constructs";
 // import * as sqs from 'aws-cdk-lib/aws-sqs';
 import { generateBatch } from "../shared/util";
-import { LambdaIntegration, MethodOptions } from 'aws-cdk-lib/aws-apigateway';
+import { MethodOptions } from 'aws-cdk-lib/aws-apigateway';
 import { movies, movieCasts, movieReviews } from "../seed/movies";
+import * as iam from "aws-cdk-lib/aws-iam";
 
 export class RestAPIStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -141,6 +142,15 @@ export class RestAPIStack extends cdk.Stack {
       entry: `${__dirname}/../lambdas/addMovie.ts`,
     });
 
+    const getTranslationFn = new lambdanode.NodejsFunction(
+      this,
+      'GetTranslationFn',
+      {
+        ...appCommonFnProps(movieReviewsTable.tableName),
+        entry: `${__dirname}/../lambdas/getTranslation.ts`,
+      },
+    );
+
     new custom.AwsCustomResource(this, "moviesddbInitData", {
       onCreate: {
         service: "DynamoDB",
@@ -188,6 +198,7 @@ export class RestAPIStack extends cdk.Stack {
     movieReviewsTable.grantReadData(getReviewsByNameFn)
     movieReviewsTable.grantReadWriteData(updateMovieReviewFn)
     movieReviewsTable.grantReadData(getAllReviewsByNameFn)
+    movieReviewsTable.grantReadData(getTranslationFn);
 
     // REST API 
     const api = new apig.RestApi(this, "RestAPI", {
@@ -249,6 +260,13 @@ export class RestAPIStack extends cdk.Stack {
     reviewerNamesEndpoint.addMethod(
       "GET",
       new apig.LambdaIntegration(getAllReviewsByNameFn, { proxy: true })
+    );
+
+    const reviewerMovieIdEndpoint = reviewerNamesEndpoint.addResource('{movieId}');
+    const translateEndpopint = reviewerMovieIdEndpoint.addResource('translation');
+    translateEndpopint.addMethod(
+      'GET',
+      new apig.LambdaIntegration(getTranslationFn, {proxy: true}),
     );
   }
 }
