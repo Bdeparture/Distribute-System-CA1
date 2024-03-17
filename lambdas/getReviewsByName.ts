@@ -2,32 +2,9 @@ import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, QueryCommandInput } from "@aws-sdk/lib-dynamodb";
 
-import Ajv from "ajv";
+const ddbDocClient = createDynamoDBDocumentClient();
 
-const ajv = new Ajv();
-const ddbDocClient = createDDbDocClient();
-
-// Function to check the reviewer name
-async function checkReviewerExistence(movieId: number, reviewerName: string): Promise<boolean> {
-    // Sanitize the reviewerName received from the API to replace "%20" with spaces,
-    // ensuring it matches the format stored in the database.
-    const sanitizedReviewerName = reviewerName.replace(/%20/g, ' ');
-
-    const commandInput: QueryCommandInput = {
-        TableName: process.env.TABLE_NAME,
-        KeyConditionExpression: "movieId = :m AND reviewerName = :rn",
-        ExpressionAttributeValues: {
-            ":m": movieId,
-            ":rn": sanitizedReviewerName,
-        },
-    };
-
-    const commandOutput = await ddbDocClient.send(new QueryCommand(commandInput));
-
-    return commandOutput.Items !== undefined && commandOutput.Items.length > 0;
-}
-
-export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {     // Note change
+export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
     try {
         console.log("Event: ", event);
         const parameters = event?.pathParameters;
@@ -44,12 +21,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {    
             };
         }
 
-        const [reviewerExists, commandOutput] = await Promise.all([
-            checkReviewerExistence(movieId, reviewerName),
-            queryDynamoDB(movieId, reviewerName)
-        ]);
+        const commandOutput = await queryDynamoDB(movieId, reviewerName);
 
-        if (!reviewerExists || !commandOutput.Items) {
+        if (!commandOutput.Items || commandOutput.Items.length === 0) {
             return {
                 statusCode: 404,
                 headers: {
@@ -83,7 +57,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {    
     }
 };
 
-function createDDbDocClient() {
+function createDynamoDBDocumentClient() {
     const ddbClient = new DynamoDBClient({ region: process.env.REGION });
     const marshallOptions = {
         convertEmptyValues: true,

@@ -1,4 +1,4 @@
-import { APIGatewayProxyHandlerV2 } from "aws-lambda";  // CHANGED
+import { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, QueryCommand, QueryCommandInput } from "@aws-sdk/lib-dynamodb";
 import Ajv from "ajv";
@@ -7,7 +7,7 @@ import schema from "../shared/types.schema.json";
 const ajv = new Ajv();
 const ddbClient = createDDbDocClient();
 
-export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // CHANGED
+export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
     try {
         const isValidQueryParams = ajv.compile(
             schema.definitions["MovieReviewQueryParams"] || {}
@@ -15,7 +15,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // 
         console.log("Event: ", event);
         const parameters = event?.pathParameters;
         const movieId = parameters?.movieId ? parseInt(parameters.movieId) : undefined;
-        const minRating = event?.queryStringParameters?.minRating ? parseInt(event.queryStringParameters.minRating) : undefined; // minRating 
+        const minRating = event?.queryStringParameters?.minRating ? parseInt(event.queryStringParameters.minRating) : undefined;
+        const year = event?.queryStringParameters?.year ? parseInt(event.queryStringParameters.year) : undefined;
 
         if (!movieId) {
             return {
@@ -39,7 +40,6 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // 
             new QueryCommand(commandInput)
         );
 
-        // rate
         if (!commandOutput || !commandOutput.Items || commandOutput.Items.length === 0) {
             return {
                 statusCode: 404,
@@ -49,28 +49,29 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => { // 
                 body: JSON.stringify({ Message: "No movie reviews found for this movie" }),
             };
         }
-        
-        const filteredItems = commandOutput.Items.filter(item => !minRating || item.rating >= minRating);
 
-        // Check if any items were found
-        if (!commandOutput.Items || commandOutput.Items.length === 0) {
-            return {
-                statusCode: 404,
-                headers: {
-                    "content-type": "application/json",
-                },
-                body: JSON.stringify({ Message: "No movie reviews found for this movie" }),
-            };
+        let reviews = commandOutput.Items;
+
+        // Filter by minRating if provided
+        if (minRating) {
+            reviews = reviews.filter(item => item.rating >= minRating);
         }
 
-        // Return Response
+        // Filter by year if provided
+        if (year) {
+            reviews = reviews.filter(item => {
+                const reviewYear = new Date(item.reviewDate).getFullYear();
+                return reviewYear === year;
+            });
+        }
+
         return {
             statusCode: 200,
             headers: {
                 "content-type": "application/json",
             },
             body: JSON.stringify({
-                data: commandOutput.Items,
+                data: reviews,
             }),
         };
     } catch (error: any) {

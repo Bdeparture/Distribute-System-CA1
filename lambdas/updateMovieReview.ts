@@ -48,12 +48,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event, context) => {
             };
         }
 
-        const [reviewerExists, commandOutput] = await Promise.all([
-            checkReviewerExistence(pathMovieId, pathReviewerName),
-            queryDynamoDB(pathMovieId, pathReviewerName)
-        ]);
+        const commandOutput = await queryDynamoDB(pathMovieId, pathReviewerName);
 
-        if (!reviewerExists || !commandOutput.Items) {
+        if (!commandOutput.Items || commandOutput.Items.length === 0) {
             return {
                 statusCode: 404,
                 headers: {
