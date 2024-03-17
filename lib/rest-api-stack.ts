@@ -48,6 +48,12 @@ export class RestAPIStack extends cdk.Stack {
       sortKey: { name: "roleName", type: dynamodb.AttributeType.STRING },
     });
 
+     // User pool
+     const userPoolId = cdk.Fn.importValue('AuthAPIStack-UserPoolId');
+     const userPoolClientId = cdk.Fn.importValue(
+       'AuthAPIStack-UserPoolClientId',
+     );
+
     // Functions 
     const getMovieByIdFn = new lambdanode.NodejsFunction(
       this,
@@ -197,10 +203,10 @@ export class RestAPIStack extends cdk.Stack {
     moviesTable.grantReadData(getAllMoviesFn)
     moviesTable.grantReadWriteData(newMovieFn)
     movieReviewsTable.grantReadWriteData(addMovieReviewsFn)
-    movieReviewsTable.grantReadWriteData(getAllMovieReviewsFn)
-    movieReviewsTable.grantReadWriteData(getReviewsByNameFn)
+    movieReviewsTable.grantReadData(getAllMovieReviewsFn)
+    movieReviewsTable.grantReadData(getReviewsByNameFn)
     movieReviewsTable.grantReadWriteData(updateMovieReviewFn)
-    movieReviewsTable.grantReadWriteData(getAllReviewsByNameFn)
+    movieReviewsTable.grantReadData(getAllReviewsByNameFn)
 
     // REST API 
     const api = new apig.RestApi(this, "RestAPI", {
